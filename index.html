@@ -728,7 +728,6 @@
 
 </html> -->
 
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -736,7 +735,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Happy Birthday AR Experience</title>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/webxr/ARButton.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/ARButton.js"></script>
   <style>
     body {
       margin: 0;
@@ -756,10 +755,17 @@
   </style>
 </head>
 <body>
-  <div id="info">🎉 Tap the AR button below to start the magical birthday surprise! 🎉</div>
+  <div id="info">🎉 Tap the AR button and then tap on a surface to place the magical birthday surprise! 🎉</div>
   <script>
     let camera, scene, renderer;
-    let objects = [];
+    let controller;
+    let reticle;
+    let hitTestSource = null;
+    let hitTestSourceRequested = false;
+    let birthdayGroup = null;
+    let spawnAnimationProgress = 0;
+    let isSpawning = false;
+    let confettiParticles = [];
 
     init();
     animate();
@@ -786,44 +792,62 @@
       dirLight.position.set(2, 2, 2);
       scene.add(dirLight);
 
-      // Birthday text
-      const textMesh = createText("HAPPY BIRTHDAY\nBEAUTIFUL! 💖");
-      textMesh.position.set(0, 0, -2);
-      scene.add(textMesh);
-      objects.push(textMesh);
+      // Reticle for placement
+      reticle = new THREE.Mesh(
+        new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+      );
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
 
-      // Floating hearts
-      addEmoji("💖", [0.8, 0.5, -1.5]);
-      addEmoji("💕", [-0.8, 0.8, -1.8]);
-      addEmoji("💗", [1.2, 0.2, -2]);
-      addEmoji("💓", [-1.2, 0.4, -2]);
-
-      // Flowers
-      addEmoji("🌸", [1.5, 1.0, -2.5]);
-      addEmoji("🌹", [-1.5, 1.2, -2.2]);
-      addEmoji("🌺", [0.5, 1.5, -2]);
-      addEmoji("🌷", [-0.5, 0.6, -2.5]);
-
-      // Cake
-      addEmoji("🎂", [0, -0.5, -1.8], 1.2);
-
-      // Balloons
-      addEmoji("🎈", [1.5, 2.0, -3]);
-      addEmoji("🎈", [-1.5, 2.2, -3]);
-      addEmoji("🎈", [0, 2.5, -3]);
-
-      // Sparkles
-      for (let i = 0; i < 10; i++) {
-        addEmoji("✨", [Math.random()*2-1, 1+Math.random()*1.5, -2-Math.random()*1], 0.4);
-      }
-
-      // Photo frame using uploaded image
-      const frame = createPhotoFrame();
-      frame.position.set(0, 0.5, -2);
-      scene.add(frame);
-      objects.push(frame);
+      // Controller for tap interaction
+      controller = renderer.xr.getController(0);
+      controller.addEventListener('select', onSelect);
+      scene.add(controller);
 
       window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function createBirthdayGroup() {
+      const group = new THREE.Group();
+
+      // Birthday text
+      const textMesh = createText("HAPPY BIRTHDAY\nBEAUTIFUL! 💖");
+      textMesh.position.set(0, 1.0, 0);
+      group.add(textMesh);
+
+      // Floating hearts
+      addEmoji(group, "💖", [0.8, 1.5, 0]);
+      addEmoji(group, "💕", [-0.8, 1.8, 0.2]);
+      addEmoji(group, "💗", [1.2, 1.2, -0.2]);
+      addEmoji(group, "💓", [-1.2, 1.4, -0.3]);
+
+      // Flowers
+      addEmoji(group, "🌸", [1.5, 2.0, -0.5]);
+      addEmoji(group, "🌹", [-1.5, 2.2, 0.5]);
+      addEmoji(group, "🌺", [0.5, 2.5, -0.5]);
+      addEmoji(group, "🌷", [-0.5, 1.6, 0.5]);
+
+      // Cake
+      addEmoji(group, "🎂", [0, 0.2, 0], 1.5);
+
+      // Balloons
+      addEmoji(group, "🎈", [1.5, 3.0, 0]);
+      addEmoji(group, "🎈", [-1.5, 3.2, 0]);
+      addEmoji(group, "🎈", [0, 3.5, 0]);
+
+      // Sparkles
+      for (let i = 0; i < 15; i++) {
+        addEmoji(group, "✨", [Math.random()*2-1, 2+Math.random()*1.5, Math.random()*2-1], 0.4);
+      }
+
+      // Photo frame
+      const frame = createPhotoFrame();
+      frame.position.set(0, 1.5, 0);
+      group.add(frame);
+
+      return group;
     }
 
     function createText(message) {
@@ -856,7 +880,7 @@
       return new THREE.Mesh(geometry, material);
     }
 
-    function addEmoji(emoji, position, scale=0.6) {
+    function addEmoji(group, emoji, position, scale=0.6) {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       canvas.width = 128;
@@ -871,8 +895,7 @@
       const geometry = new THREE.PlaneGeometry(scale, scale);
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(position[0], position[1], position[2]);
-      scene.add(mesh);
-      objects.push(mesh);
+      group.add(mesh);
     }
 
     function createPhotoFrame() {
@@ -880,6 +903,43 @@
       const loader = new THREE.TextureLoader();
       const material = new THREE.MeshBasicMaterial({ map: loader.load('./test.jpeg'), transparent: true });
       return new THREE.Mesh(geometry, material);
+    }
+
+    function spawnConfetti(origin) {
+      const colors = [0xff6b9d, 0x667eea, 0x764ba2, 0xffff00, 0x00ff00, 0xff0000];
+      for (let i = 0; i < 30; i++) {
+        const geometry = new THREE.PlaneGeometry(0.1, 0.1);
+        const material = new THREE.MeshBasicMaterial({ color: colors[Math.floor(Math.random()*colors.length)] });
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.copy(origin);
+        particle.velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          Math.random() * 3 + 2,
+          (Math.random() - 0.5) * 2
+        );
+        particle.life = 100 + Math.random() * 50;
+        scene.add(particle);
+        confettiParticles.push(particle);
+      }
+    }
+
+    function onSelect() {
+      if (reticle.visible) {
+        if (birthdayGroup) {
+          scene.remove(birthdayGroup);
+        }
+        birthdayGroup = createBirthdayGroup();
+        birthdayGroup.position.setFromMatrixPosition(reticle.matrix);
+        birthdayGroup.scale.set(0.001, 0.001, 0.001); // start tiny
+        scene.add(birthdayGroup);
+
+        // Start entrance animation
+        spawnAnimationProgress = 0;
+        isSpawning = true;
+
+        // Confetti burst 🎊
+        spawnConfetti(birthdayGroup.position.clone());
+      }
     }
 
     function onWindowResize() {
@@ -892,15 +952,70 @@
       renderer.setAnimationLoop(render);
     }
 
-    function render() {
-      const time = Date.now() * 0.001;
-      objects.forEach(obj => {
-        obj.rotation.y += 0.005;
-        if (obj.position.y > 1.5 && Math.random() > 0.99) obj.position.y -= 0.5;
-        if (obj.material && obj.material.opacity !== undefined && Math.random() > 0.98) {
-          obj.material.opacity = 0.5 + Math.random()*0.5;
+    function render(timestamp, frame) {
+      if (frame) {
+        const referenceSpace = renderer.xr.getReferenceSpace();
+        const session = renderer.xr.getSession();
+
+        if (!hitTestSourceRequested) {
+          session.requestReferenceSpace('viewer').then(function (refSpace) {
+            session.requestHitTestSource({ space: refSpace }).then(function (source) {
+              hitTestSource = source;
+            });
+          });
+          session.addEventListener('end', function () {
+            hitTestSourceRequested = false;
+            hitTestSource = null;
+          });
+          hitTestSourceRequested = true;
+        }
+
+        if (hitTestSource) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+          if (hitTestResults.length) {
+            const hit = hitTestResults[0];
+            reticle.visible = true;
+            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+          } else {
+            reticle.visible = false;
+          }
+        }
+      }
+
+      // Animate birthday group spawn
+      if (isSpawning && birthdayGroup) {
+        spawnAnimationProgress += 0.02;
+        const scale = Math.min(1, spawnAnimationProgress);
+        birthdayGroup.scale.set(scale, scale, scale);
+        if (scale >= 1) isSpawning = false;
+      }
+
+      // Gentle rotations and sparkle twinkles
+      if (birthdayGroup) {
+        birthdayGroup.children.forEach(child => {
+          if (child.isMesh) {
+            if (child.geometry.type === 'PlaneGeometry') {
+              child.rotation.y += 0.002;
+              if (child.material.opacity !== undefined && Math.random() > 0.98) {
+                child.material.opacity = 0.7 + Math.random()*0.3;
+              }
+            }
+          }
+        });
+      }
+
+      // Update confetti
+      confettiParticles.forEach((p, i) => {
+        p.position.add(p.velocity.clone().multiplyScalar(0.02));
+        p.velocity.y -= 0.05; // gravity
+        p.life--;
+        if (p.life <= 0) {
+          scene.remove(p);
+          confettiParticles.splice(i, 1);
         }
       });
+
       renderer.render(scene, camera);
     }
   </script>
