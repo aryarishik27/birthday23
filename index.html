@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Happy Birthday AR Experience</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+        
+        body {
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #ff6b9d 100%);
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 80%, rgba(255, 107, 157, 0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(118, 75, 162, 0.3) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .instructions {
+            position: fixed;
+            top: 30px;
+            left: 30px;
+            right: 30px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 25px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 1000;
+            font-size: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .instructions h3 {
+            margin: 0 0 15px 0;
+            font-weight: 700;
+            font-size: 24px;
+            background: linear-gradient(45deg, #fff, #ff6b9d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .start-button {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #ff6b9d 0%, #667eea 100%);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            border-radius: 60px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 15px 35px rgba(255, 107, 157, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+        
+        .start-button:hover {
+            transform: translateX(-50%) translateY(-3px) scale(1.05);
+            box-shadow: 0 20px 50px rgba(255, 107, 157, 0.6);
+        }
+        
+        .start-button:active {
+            transform: translateX(-50%) translateY(-1px) scale(0.98);
+        }
+        
+        #ar-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            font-size: 22px;
+            z-index: 1001;
+            font-weight: 600;
+        }
+        
+        .loading-dots {
+            margin-top: 20px;
+        }
+        
+        .loading-dots span {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ff6b9d, #667eea);
+            margin: 0 5px;
+            animation: loadingDots 1.4s ease-in-out infinite both;
+        }
+        
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes loadingDots {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        
+        .tap-hint {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.15);
+            color: white;
+            padding: 18px 30px;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: 500;
+            z-index: 1001;
+            display: none;
+            animation: pulseGlow 2s ease-in-out infinite;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 10px 30px rgba(255, 107, 157, 0.3);
+        }
+        
+        @keyframes pulseGlow {
+            0%, 100% { 
+                opacity: 0.9; 
+                transform: translateX(-50%) scale(1);
+                box-shadow: 0 10px 30px rgba(255, 107, 157, 0.3);
+            }
+            50% { 
+                opacity: 1; 
+                transform: translateX(-50%) scale(1.05);
+                box-shadow: 0 15px 40px rgba(255, 107, 157, 0.5);
+            }
+        }
+        
+        .photo-frame {
+            position: absolute;
+            width: 250px;
+            height: 250px;
+            background: linear-gradient(45deg, rgba(255,255,255,0.9), rgba(255,255,255,0.7));
+            border-radius: 25px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+            overflow: hidden;
+            display: none;
+            z-index: 500;
+            backdrop-filter: blur(10px);
+            border: 3px solid rgba(255,255,255,0.5);
+            padding: 15px;
+        }
+        
+        .photo-frame img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 15px;
+        }
+        
+        .celebration-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+        
+        .celebration-particle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: linear-gradient(45deg, #ff6b9d, #667eea);
+            border-radius: 50%;
+            animation: celebrationFloat 3s ease-out forwards;
+        }
+        
+        @keyframes celebrationFloat {
+            0% {
+                transform: translateY(0) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) rotate(360deg);
+                opacity: 0;
+            }
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+            display: none;
+        }
+        
+        .control-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            margin: 5px;
+            font-size: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+        
+        .message-overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 1001;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.2);
+            display: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="instructions" id="instructions">
+        <h3>✨ Magical Birthday Experience ✨</h3>
+        <p><strong>No setup needed!</strong> Point your camera at any surface and create your personalized 3D birthday celebration!</p>
+        <p><em>Best experienced with good lighting 💡</em></p>
+    </div>
+    
+    <div class="loading" id="loading" style="display: none;">
+        <div>🎉 Preparing your magical surprise...</div>
+        <div style="margin-top: 10px; font-size: 16px; opacity: 0.8;">Point at any flat surface</div>
+        <div class="loading-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    </div>
+    
+    <div class="tap-hint" id="tapHint">
+        ✨ Tap to place your birthday magic! ✨
+    </div>
+    
+    <div class="controls" id="controls">
+        <button class="control-btn" id="resetBtn" title="Reset">🔄</button>
+        <button class="control-btn" id="captureBtn" title="Capture">📸</button>
+    </div>
+    
+    <div class="message-overlay" id="messageOverlay"></div>
+    
+    <button class="start-button" id="startButton">✨ Start The Magic ✨</button>
+    
+    <div id="ar-container">
+        <canvas id="ar-canvas"></canvas>
+        <div class="photo-frame" id="photoFrame">
+            <img src="./test.jpeg" alt="Birthday Girl" id="birthdayPhoto">
+        </div>
+    </div>
+    
+    <div class="celebration-overlay" id="celebrationOverlay"></div>
+    
+    <script>
+        let scene, camera, renderer, arObjects = [];
+        let isARActive = false;
+        let animationFrameId;
+        let hasPlacedSurprise = false;
+        let currentBirthdayScene = null;
+        
+        const startButton = document.getElementById('startButton');
+        const instructions = document.getElementById('instructions');
+        const loading = document.getElementById('loading');
+        const arContainer = document.getElementById('ar-container');
+        const tapHint = document.getElementById('tapHint');
+        const photoFrame = document.getElementById('photoFrame');
+        const controls = document.getElementById('controls');
+        const resetBtn = document.getElementById('resetBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const messageOverlay = document.getElementById('messageOverlay');
+        const celebrationOverlay = document.getElementById('celebrationOverlay');
+        
+        const HER_PHOTO_URL = "./test.jpeg";
+        
+        startButton.addEventListener('click', initializeAR);
+        resetBtn.addEventListener('click', resetExperience);
+        captureBtn.addEventListener('click', capturePhoto);
+        
+        function initializeAR() {
+            startButton.style.display = 'none';
+            instructions.style.display = 'none';
+            loading.style.display = 'block';
+            
+            setTimeout(() => {
+                loading.style.display = 'none';
+                arContainer.style.display = 'block';
+                tapHint.style.display = 'block';
+                controls.style.display = 'block';
+                setupThreeJS();
+                startARExperience();
+            }, 2500);
+        }
+        
+        function setupThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('ar-canvas'), 
+                alpha: true,
+                antialias: true,
+                preserveDrawingBuffer: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000, 0);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            // Enhanced lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(2, 2, 2);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            // Add some colored lights for atmosphere
+            const pinkLight = new THREE.PointLight(0xff6b9d, 0.5, 10);
+            pinkLight.position.set(-3, 2, 0);
+            scene.add(pinkLight);
+            
+            const blueLight = new THREE.PointLight(0x667eea, 0.5, 10);
+            blueLight.position.set(3, 2, 0);
+            scene.add(blueLight);
+            
+            camera.position.z = 5;
+        }
+        
+        function createBirthdayScene(position) {
+            const group = new THREE.Group();
+            
+            // Enhanced main text
+            const textGeometry = new THREE.PlaneGeometry(4, 1.2);
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 1024;
+            canvas.height = 256;
+            
+            // Create gradient background
+            const gradient = context.createLinearGradient(0, 0, 1024, 0);
+            gradient.addColorStop(0, '#ff6b9d');
+            gradient.addColorStop(0.5, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 1024, 256);
+            
+            // Add text with shadow
+            context.shadowColor = 'rgba(0,0,0,0.3)';
+            context.shadowBlur = 10;
+            context.shadowOffsetX = 5;
+            context.shadowOffsetY = 5;
+            
+            context.fillStyle = 'white';
+            context.font = 'bold 64px Poppins, Arial';
+            context.textAlign = 'center';
+            context.fillText('HAPPY BIRTHDAY', 512, 80);
+            context.fillText('BEAUTIFUL! 💖', 512, 160);
+            
+            const textTexture = new THREE.CanvasTexture(canvas);
+            const textMaterial = new THREE.MeshBasicMaterial({ 
+                map: textTexture, 
+                transparent: true,
+                alphaTest: 0.1
+            });
+            
+            const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+            textMesh.position.set(0, 2.5, 0);
+            group.add(textMesh);
+            
+            // Enhanced floating hearts with different colors
+            const heartData = [
+                { pos: [2.5, 2, 0], emoji: '💖', scale: 1, color: '#ff1493' },
+                { pos: [-2.5, 2.3, 0.8], emoji: '💕', scale: 0.8, color: '#ff69b4' },
+                { pos: [2, 1, -0.8], emoji: '💗', scale: 0.9, color: '#ff91a4' },
+                { pos: [-2, 1.5, 1], emoji: '💓', scale: 0.7, color: '#ffb6c1' },
+                { pos: [0, 3.5, 0], emoji: '💖', scale: 0.6, color: '#ff1493' }
+            ];
+            
+            heartData.forEach((heart, index) => {
+                const heartMesh = createEnhancedEmojiMesh(heart.emoji, heart.scale, heart.color);
+                heartMesh.position.set(...heart.pos);
+                heartMesh.userData = { 
+                    originalY: heart.pos[1], 
+                    floatSpeed: 0.02 + index * 0.008,
+                    floatRange: 0.8,
+                    rotationSpeed: 0.005 + index * 0.002
+                };
+                group.add(heartMesh);
+            });
+            
+            // Enhanced flowers
+            const flowerData = [
+                { pos: [3.5, 2.8, -1.2], emoji: '🌸', scale: 0.8, color: '#ffb6c1' },
+                { pos: [-3.8, 3, 1], emoji: '🌹', scale: 0.9, color: '#ff1493' },
+                { pos: [3.2, 0.8, 1.2], emoji: '🌺', scale: 0.7, color: '#ff69b4' },
+                { pos: [-3.5, 1.2, -1], emoji: '🌷', scale: 0.8, color: '#ff91a4' }
+            ];
+            
+            flowerData.forEach((flower, index) => {
+                const flowerMesh = createEnhancedEmojiMesh(flower.emoji, flower.scale, flower.color);
+                flowerMesh.position.set(...flower.pos);
+                flowerMesh.userData = { 
+                    rotationSpeed: 0.015 + index * 0.005,
+                    bobSpeed: 0.01 + index * 0.003,
+                    originalY: flower.pos[1]
+                };
+                group.add(flowerMesh);
+            });
+            
+            // Enhanced birthday cake with glow
+            const cakeMesh = createEnhancedEmojiMesh('🎂', 1.5, '#ffgold');
+            cakeMesh.position.set(0, -1, 0);
+            cakeMesh.userData = { 
+                rotationSpeed: 0.01,
+                pulseSpeed: 0.02
+            };
+            group.add(cakeMesh);
+            
+            // Enhanced balloons
+            const balloonData = [
+                { pos: [4, 4, 0.5], scale: 1.2, color: '#ff6b9d' },
+                { pos: [-4, 3.8, -0.5], scale: 1.1, color: '#667eea' },
+                { pos: [4.5, 2.5, 1], scale: 1, color: '#764ba2' }
+            ];
+            
+            balloonData.forEach((balloon, index) => {
+                const balloonMesh = createEnhancedEmojiMesh('🎈', balloon.scale, balloon.color);
+                balloonMesh.position.set(...balloon.pos);
+                balloonMesh.userData = { 
+                    originalY: balloon.pos[1],
+                    floatSpeed: 0.012 + index * 0.004,
+                    floatRange: 0.5,
+                    swaySpeed: 0.008 + index * 0.002,
+                    swayRange: 0.3
+                };
+                group.add(balloonMesh);
+            });
+            
+            // Enhanced sparkles
+            const sparklePositions = [
+                { pos: [1.5, 4, 1.5], scale: 0.5 },
+                { pos: [-1.8, 3.8, -1.2], scale: 0.4 },
+                { pos: [0, 4.2, 0.8], scale: 0.6 },
+                { pos: [2.2, 1.5, -1.8], scale: 0.35 },
+                { pos: [-2.5, 2.2, 1.5], scale: 0.45 }
+            ];
+            
+            sparklePositions.forEach((sparkle, index) => {
+                const sparkleMesh = createEnhancedEmojiMesh('✨', sparkle.scale, '#ffgold');
+                sparkleMesh.position.set(...sparkle.pos);
+                sparkleMesh.userData = { 
+                    originalY: sparkle.pos[1],
+                    floatSpeed: 0.03 + index * 0.008,
+                    floatRange: 1,
+                    twinkleSpeed: 0.05 + index * 0.01
+                };
+                group.add(sparkleMesh);
+            });
+            
+            group.position.copy(position);
+            group.userData = { celebrationTime: Date.now() };
+            return group;
+        }
+        
+        function createEnhancedEmojiMesh(emoji, scale = 0.5, glowColor = '#ffffff') {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 128;
+            canvas.height = 128;
+            
+            // Add glow effect
+            context.shadowColor = glowColor;
+            context.shadowBlur = 20;
+            
+            context.font = '96px Arial';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(emoji, 64, 64);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshBasicMaterial({ 
+                map: texture, 
+                transparent: true,
+                alphaTest: 0.1
+            });
+            const geometry = new THREE.PlaneGeometry(scale, scale);
+            
+            return new THREE.Mesh(geometry, material);
+        }
+        
+        function startARExperience() {
+            isARActive = true;
+            
+            arContainer.addEventListener('click', (event) => {
+                if (hasPlacedSurprise) {
+                    showMessage("✨ Your surprise is already here! Use reset to create a new one ✨");
+                    return;
+                }
+                
+                const rect = arContainer.getBoundingClientRect();
+                const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                
+                const vector = new THREE.Vector3(x, y, -1);
+                vector.unproject(camera);
+                
+                const distance = 4;
+                const position = camera.position.clone().add(
+                    vector.sub(camera.position).normalize().multiplyScalar(distance)
+                );
+                
+                currentBirthdayScene = createBirthdayScene(position);
+                scene.add(currentBirthdayScene);
+                arObjects.push(currentBirthdayScene);
+                
+                // Enhanced photo frame appearance
+                photoFrame.style.display = 'block';
+                photoFrame.style.left = Math.min(Math.max(event.clientX - 125, 20), window.innerWidth - 270) + 'px';
+                photoFrame.style.top = Math.min(Math.max(event.clientY - 125, 20), window.innerHeight - 270) + 'px';
+                
+                const photo = document.getElementById('birthdayPhoto');
+                if (HER_PHOTO_URL && !HER_PHOTO_URL.includes('svg')) {
+                    photo.src = HER_PHOTO_URL;
+                }
+                
+                tapHint.style.display = 'none';
+                hasPlacedSurprise = true;
+                
+                // Celebration animation
+                photoFrame.style.transform = 'scale(0) rotate(10deg)';
+                photoFrame.style.transition = 'all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                setTimeout(() => {
+                    photoFrame.style.transform = 'scale(1) rotate(0deg)';
+                }, 100);
+                
+                // Trigger celebration particles
+                triggerCelebration();
+                showMessage("🎉 Happy Birthday Beautiful! 🎉", 3000);
+            });
+            
+            animate();
+        }
+        
+        function triggerCelebration() {
+            celebrationOverlay.style.display = 'block';
+            
+            for (let i = 0; i < 20; i++) {
+                setTimeout(() => {
+                    const particle = document.createElement('div');
+                    particle.className = 'celebration-particle';
+                    particle.style.left = Math.random() * window.innerWidth + 'px';
+                    particle.style.bottom = '0px';
+                    particle.style.animationDelay = (Math.random() * 2) + 's';
+                    celebrationOverlay.appendChild(particle);
+                    
+                    setTimeout(() => {
+                        particle.remove();
+                    }, 3000);
+                }, i * 100);
+            }
+            
+            setTimeout(() => {
+                celebrationOverlay.style.display = 'none';
+            }, 5000);
+        }
+        
+        function animate() {
+            if (!isARActive) return;
+            
+            const time = Date.now() * 0.001;
+            
+            arObjects.forEach(group => {
+                group.children.forEach((child, index) => {
+                    const userData = child.userData;
+                    
+                    if (userData.floatSpeed) {
+                        child.position.y = userData.originalY + 
+                            Math.sin(time * userData.floatSpeed) * userData.floatRange;
+                    }
+                    
+                    if (userData.rotationSpeed) {
+                        child.rotation.z += userData.rotationSpeed;
+                    }
+                    
+                    if (userData.swaySpeed) {
+                        child.position.x += Math.sin(time * userData.swaySpeed) * userData.swayRange * 0.01;
+                    }
+                    
+                    if (userData.twinkleSpeed) {
+                        child.material.opacity = 0.7 + Math.sin(time * userData.twinkleSpeed) * 0.3;
+                    }
+                    
+                    if (userData.pulseSpeed) {
+                        const scale = 1 + Math.sin(time * userData.pulseSpeed) * 0.1;
+                        child.scale.set(scale, scale, scale);
+                    }
+                });
+                
+                // Gentle rotation for the main text
+                if (group.children[0]) {
+                    group.children[0].rotation.y = Math.sin(time * 0.3) * 0.05;
+                }
+            });
+            
+            renderer.render(scene, camera);
+            animationFrameId = requestAnimationFrame(animate);
+        }
+        
+        function resetExperience() {
+            if (currentBirthdayScene) {
+                scene.remove(currentBirthdayScene);
+                arObjects = arObjects.filter(obj => obj !== currentBirthdayScene);
+                currentBirthdayScene = null;
+            }
+            
+            photoFrame.style.display = 'none';
+            hasPlacedSurprise = false;
+            tapHint.style.display = 'block';
+            
+            showMessage("✨ Ready for a new surprise! ✨");
+        }
+        
+        function capturePhoto() {
+            if (!hasPlacedSurprise) {
+                showMessage("📸 Place your surprise first!");
+                return;
+            }
+            
+            try {
+                const dataURL = renderer.domElement.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.download = 'birthday-surprise.png';
+                link.href = dataURL;
+                link.click();
+                showMessage("📸 Photo saved!");
+            } catch (error) {
+                showMessage("📸 Capture not supported on this device");
+            }
+        }
+        
+        function showMessage(text, duration = 2000) {
+            messageOverlay.textContent = text;
+            messageOverlay.style.display = 'block';
+            messageOverlay.style.opacity = '0';
+            messageOverlay.style.transform = 'translate(-50%, -50%) scale(0.8)';
+            
+            setTimeout(() => {
+                messageOverlay.style.transition = 'all 0.3s ease';
+                messageOverlay.style.opacity = '1';
+                messageOverlay.style.transform = 'translate(-50%, -50%) scale(1)';
+            }, 10);
+            
+            setTimeout(() => {
+                messageOverlay.style.opacity = '0';
+                messageOverlay.style.transform = 'translate(-50%, -50%) scale(0.8)';
+                setTimeout(() => {
+                    messageOverlay.style.display = 'none';
+                }, 300);
+            }, duration);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+        
+        // Cleanup
+        window.addEventListener('beforeunload', () => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+        });
+    </script>
+</body>
+</html>
