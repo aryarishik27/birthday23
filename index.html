@@ -735,7 +735,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Happy Birthday AR Experience</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.js"></script>
   <style>
     body {
       margin: 0;
@@ -773,10 +772,26 @@
       margin: 20px;
       box-shadow: 0 4px 15px rgba(0,0,0,0.3);
       transition: all 0.3s ease;
+      z-index: 200;
     }
     #startButton:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    }
+    #arButton {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 15px 30px;
+      font-size: 16px;
+      background: linear-gradient(45deg, #ff6b9d, #667eea);
+      border: none;
+      border-radius: 25px;
+      color: white;
+      cursor: pointer;
+      z-index: 999;
+      display: none;
     }
     #error {
       background: rgba(255,0,0,0.8);
@@ -784,19 +799,26 @@
       border-radius: 10px;
       margin: 20px;
       display: none;
+      max-width: 80%;
     }
     .hidden { display: none !important; }
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
   </style>
 </head>
 <body>
-  <div id="info">🎉 Tap anywhere on the screen to place your magical birthday surprise! 🎉</div>
+  <div id="info">🎉 First tap "Start AR", then tap "Enter AR", then tap on any surface to place your magical birthday surprise! 🎉</div>
   <div id="error"></div>
   <button id="startButton">Start AR Experience</button>
+  <button id="arButton">Enter AR</button>
+  <div id="canvas-container"></div>
 
   <script>
-    // WebXR Polyfill for better compatibility
-    const polyfill = new WebXRPolyfill();
-
     let camera, scene, renderer;
     let reticle;
     let birthdayGroup = null;
@@ -804,43 +826,52 @@
     let isSpawning = false;
     let confettiParticles = [];
     let isARActive = false;
+    let hitTestSource = null;
+    let hitTestSourceRequested = false;
 
     const startButton = document.getElementById('startButton');
+    const arButton = document.getElementById('arButton');
     const errorDiv = document.getElementById('error');
+    const canvasContainer = document.getElementById('canvas-container');
 
-    startButton.addEventListener('click', startAR);
+    startButton.addEventListener('click', startExperience);
+    arButton.addEventListener('click', enterAR);
 
     function showError(message) {
+      console.error('AR Error:', message);
       errorDiv.textContent = message;
       errorDiv.style.display = 'block';
       startButton.style.display = 'block';
+      arButton.style.display = 'none';
     }
 
-    async function startAR() {
-      try {
-        if (!navigator.xr) {
-          showError('WebXR is not supported on this device. Please try on a newer Android device with Chrome or an iOS device with Safari.');
-          return;
-        }
-
-        const supported = await navigator.xr.isSessionSupported('immersive-ar');
-        if (!supported) {
-          showError('AR is not supported on this device. Please ensure you have a compatible device and browser.');
-          return;
-        }
-
-        init();
-        animate();
-        
-        startButton.classList.add('hidden');
-        
-      } catch (error) {
-        console.error('AR Error:', error);
-        showError('Failed to start AR. Please make sure you grant camera permissions and try again.');
+    function startExperience() {
+      console.log('Starting AR Experience...');
+      
+      // Check WebXR support
+      if (!navigator.xr) {
+        showError('WebXR is not supported. Please use Chrome on Android (81+) or Safari on iOS (14.5+)');
+        return;
       }
+
+      navigator.xr.isSessionSupported('immersive-ar').then(function(supported) {
+        if (supported) {
+          console.log('AR is supported!');
+          init();
+          startButton.classList.add('hidden');
+          arButton.style.display = 'block';
+        } else {
+          showError('AR is not supported on this device. Try Chrome on Android or Safari on iOS.');
+        }
+      }).catch(function(error) {
+        console.error('Error checking AR support:', error);
+        showError('Error checking AR support: ' + error.message);
+      });
     }
 
     function init() {
+      console.log('Initializing Three.js...');
+      
       scene = new THREE.Scene();
       camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
@@ -848,14 +879,10 @@
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.xr.enabled = true;
-      document.body.appendChild(renderer.domElement);
-
-      // Create custom AR button
-      createARButton();
+      canvasContainer.appendChild(renderer.domElement);
 
       // Lights
       const hemiLight = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-      hemiLight.position.set(0.5, 1, 0.25);
       scene.add(hemiLight);
 
       const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -871,49 +898,37 @@
       reticle.visible = false;
       scene.add(reticle);
 
-      // Add touch/click interaction for non-controller devices
-      window.addEventListener('click', onSelect);
-      window.addEventListener('touchend', onSelect);
+      // Add interaction
+      renderer.domElement.addEventListener('click', onSelect);
+      renderer.domElement.addEventListener('touchend', onSelect);
       window.addEventListener('resize', onWindowResize, false);
+
+      animate();
     }
 
-    function createARButton() {
-      const button = document.createElement('button');
-      button.textContent = 'Enter AR';
-      button.style.cssText = `
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 15px 30px;
-        font-size: 16px;
-        background: linear-gradient(45deg, #ff6b9d, #667eea);
-        border: none;
-        border-radius: 25px;
-        color: white;
-        cursor: pointer;
-        z-index: 999;
-      `;
+    function enterAR() {
+      console.log('Entering AR...');
       
-      button.addEventListener('click', async () => {
-        try {
-          const session = await navigator.xr.requestSession('immersive-ar', {
-            requiredFeatures: ['hit-test'],
-            optionalFeatures: ['dom-overlay'],
-            domOverlay: { root: document.body }
-          });
-          
-          await renderer.xr.setSession(session);
-          button.style.display = 'none';
-          isARActive = true;
-          
-        } catch (error) {
-          console.error('Failed to start AR session:', error);
-          showError('Could not start AR session. Please try again.');
-        }
+      navigator.xr.requestSession('immersive-ar', {
+        requiredFeatures: ['hit-test']
+      }).then(function(session) {
+        console.log('AR session started!');
+        renderer.xr.setSession(session);
+        arButton.style.display = 'none';
+        isARActive = true;
+        
+        session.addEventListener('end', function() {
+          console.log('AR session ended');
+          isARActive = false;
+          hitTestSource = null;
+          hitTestSourceRequested = false;
+          arButton.style.display = 'block';
+        });
+        
+      }).catch(function(error) {
+        console.error('Failed to start AR session:', error);
+        showError('Could not start AR: ' + error.message + '. Make sure to grant camera permissions.');
       });
-      
-      document.body.appendChild(button);
     }
 
     function createBirthdayGroup() {
@@ -1019,32 +1034,36 @@
     }
 
     function onSelect(event) {
-      if (!isARActive) return;
+      if (!isARActive) {
+        console.log('AR not active, ignoring click');
+        return;
+      }
       
       event.preventDefault();
+      console.log('Surface tapped!');
       
-      if (reticle.visible || !isARActive) {
-        if (birthdayGroup) {
-          scene.remove(birthdayGroup);
-        }
-        
-        birthdayGroup = createBirthdayGroup();
-        
-        if (reticle.visible) {
-          birthdayGroup.position.setFromMatrixPosition(reticle.matrix);
-        } else {
-          // Fallback position
-          birthdayGroup.position.set(0, 0, -2);
-        }
-        
-        birthdayGroup.scale.set(0.001, 0.001, 0.001);
-        scene.add(birthdayGroup);
-
-        spawnAnimationProgress = 0;
-        isSpawning = true;
-
-        spawnConfetti(birthdayGroup.position.clone());
+      if (birthdayGroup) {
+        scene.remove(birthdayGroup);
       }
+      
+      birthdayGroup = createBirthdayGroup();
+      
+      if (reticle.visible) {
+        birthdayGroup.position.setFromMatrixPosition(reticle.matrix);
+        console.log('Placed at reticle position');
+      } else {
+        // Fallback position in front of camera
+        birthdayGroup.position.set(0, 0, -2);
+        console.log('Placed at fallback position');
+      }
+      
+      birthdayGroup.scale.set(0.001, 0.001, 0.001);
+      scene.add(birthdayGroup);
+
+      spawnAnimationProgress = 0;
+      isSpawning = true;
+
+      spawnConfetti(birthdayGroup.position.clone());
     }
 
     function onWindowResize() {
@@ -1062,20 +1081,27 @@
         const referenceSpace = renderer.xr.getReferenceSpace();
         const session = renderer.xr.getSession();
 
-        if (session) {
-          const viewerReferenceSpace = await session.requestReferenceSpace('viewer').catch(() => null);
-          if (viewerReferenceSpace) {
-            const hitTestSource = await session.requestHitTestSource({ space: viewerReferenceSpace }).catch(() => null);
-            if (hitTestSource) {
-              const hitTestResults = frame.getHitTestResults(hitTestSource);
-              if (hitTestResults.length) {
-                const hit = hitTestResults[0];
-                reticle.visible = true;
-                reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
-              } else {
-                reticle.visible = false;
-              }
-            }
+        if (!hitTestSourceRequested) {
+          session.requestReferenceSpace('viewer').then(function(refSpace) {
+            session.requestHitTestSource({ space: refSpace }).then(function(source) {
+              hitTestSource = source;
+            });
+          });
+          session.addEventListener('end', function() {
+            hitTestSourceRequested = false;
+            hitTestSource = null;
+          });
+          hitTestSourceRequested = true;
+        }
+
+        if (hitTestSource) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length) {
+            const hit = hitTestResults[0];
+            reticle.visible = true;
+            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+          } else {
+            reticle.visible = false;
           }
         }
       }
@@ -1091,12 +1117,10 @@
       // Gentle rotations and sparkle twinkles
       if (birthdayGroup) {
         birthdayGroup.children.forEach(child => {
-          if (child.isMesh) {
-            if (child.geometry.type === 'PlaneGeometry') {
-              child.rotation.y += 0.002;
-              if (child.material.opacity !== undefined && Math.random() > 0.98) {
-                child.material.opacity = 0.7 + Math.random()*0.3;
-              }
+          if (child.isMesh && child.geometry.type === 'PlaneGeometry') {
+            child.rotation.y += 0.002;
+            if (child.material.opacity !== undefined && Math.random() > 0.98) {
+              child.material.opacity = 0.7 + Math.random()*0.3;
             }
           }
         });
@@ -1118,4 +1142,3 @@
   </script>
 </body>
 </html>
-
